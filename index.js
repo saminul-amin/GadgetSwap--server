@@ -348,6 +348,223 @@ async function run() {
         }
       }
     );
+
+    // Gadgets related APIs
+    const gadgetsCollection = database.collection("gadgetsCollection");
+
+    app.get("/gadgets/featured_gadgets_for_home_page", async (req, res) => {
+      try {
+        const categories = [
+          "Smartphones",
+          "Laptops",
+          "Tablets",
+          "Smartwatches",
+          "Cameras",
+          "Gaming",
+          "Audio",
+          "Headphones",
+          "Speakers",
+          "Wearables",
+          "VR",
+          "Drones",
+          "Projectors",
+        ];
+
+        let featuredGadgets = [];
+
+        for (const category of categories) {
+          const gadgets = await gadgetsCollection
+            .find({ category })
+            .sort({ totalRentalCount: -1 })
+            .limit(3)
+            .toArray();
+
+          const formattedGadgets = gadgets.map((gadget) => ({
+            id: gadget?._id.toString(),
+            name: gadget?.name,
+            category: gadget?.category,
+            image: gadget?.images[0],
+            pricePerDay: gadget?.pricing?.perDay,
+            average_rating: gadget?.average_rating,
+            description: gadget?.description,
+          }));
+
+          featuredGadgets = featuredGadgets.concat(formattedGadgets);
+        }
+
+        return res.send({
+          status: 200,
+          data: featuredGadgets,
+          message: "Featured gadgets, for home page, fetched successfully!",
+        });
+      } catch (error) {
+        console.error(
+          "Failed to fetch featured gadgets, for home page! :",
+          error
+        );
+        return res.send({
+          status: 500,
+          message: "Failed to fetch featured gadgets, for home page!",
+        });
+      }
+    });
+
+    app.get("/gadgets/get_all_gadgets_for_gadgets_page", async (req, res) => {
+      try {
+        const allGadgetObjects = await gadgetsCollection.find().toArray();
+
+        const formattedGadgets = allGadgetObjects.map((gadget) => ({
+          id: gadget?._id.toString(),
+          name: gadget?.name,
+          category: gadget?.category,
+          image: gadget?.images[0],
+          average_rating: gadget?.average_rating,
+          pricePerDay: gadget?.pricing?.perDay,
+          description: gadget?.description,
+          popularity: gadget?.totalRentalCount,
+        }));
+
+        return res.send({
+          status: 200,
+          data: formattedGadgets,
+          message: "Gadgets, for gadgets page, fetched successfully!",
+        });
+      } catch (error) {
+        console.error("Failed to fetch Gadgets, for gadgets page! :", error);
+        return res.send({
+          status: 500,
+          message: "Failed to fetch Gadgets, for gadgets page!",
+        });
+      }
+    });
+
+    app.get("/gadgets/get_gadget_details_by_id/:id", async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const gadgetResult = await gadgetsCollection.findOne(query);
+      if (gadgetResult) {
+        res.send({
+          status: 200,
+          data: gadgetResult,
+          message: "Gadget details by id fetched successfully!",
+        });
+      } else {
+        res.send({
+          status: 404,
+          message: "Failed to fetch Gadget details by id! Gadget not found!",
+        });
+      }
+    });
+
+    app.post(
+      "/gadgets/get_gadget_details_of_a_wishlist_array",
+      verifyJWT,
+      async (req, res) => {
+        try {
+          const { userEmail } = req.body;
+
+          if (!userEmail) {
+            return res
+              .status(400)
+              .send({ status: 400, message: "userEmail is required!" });
+          }
+
+          const { decoded_email } = req;
+          if (userEmail !== decoded_email) {
+            return res.status(403).send({
+              status: 403,
+              message: "Forbidden access, email mismatch!",
+            });
+          }
+
+          const userQuery = { email: userEmail };
+          const userResult = await userCollection.findOne(userQuery);
+          if (!userResult) {
+            return res
+              .status(404)
+              .send({ status: 404, message: "User not found!" });
+          }
+
+          const gadgetIdsArray = userResult.wishlist || [];
+          if (gadgetIdsArray.length === 0) {
+            return res.send({
+              status: 200,
+              data: [],
+              message: "Wishlist is empty!",
+            });
+          }
+
+          let gadgetObjectIds;
+          try {
+            gadgetObjectIds = gadgetIdsArray.map((id) => new ObjectId(id));
+          } catch (error) {
+            return res.send({
+              status: 400,
+              message: "Invalid gadget ID format in wishlist!",
+            });
+          }
+
+          const gadgetQuery = { _id: { $in: gadgetObjectIds } };
+          const gadgetObjectsArray = await gadgetsCollection
+            .find(gadgetQuery)
+            .toArray();
+
+          return res.send({
+            status: 200,
+            data: gadgetObjectsArray,
+            message: "Gadget details of wishlist fetched successfully!",
+          });
+        } catch (error) {
+          console.error(error);
+          return res
+            .status(500)
+            .send({ status: 500, message: "Something went wrong!" });
+        }
+      }
+    );
+
+    // Messages Collection
+    const messagesCollection = database.collection("messagesCollection");
+
+    app.post("/messages/get_all_messages_of_a_user", async (req, res) => {
+      try {
+        const { userEmail } = req.body;
+
+        if (!userEmail) {
+          return res
+            .status(400)
+            .send({ status: 400, message: "User email is missing!" });
+        }
+
+        const messageChainQuery = { user_email: userEmail };
+        const messageChainResult = await messagesCollection.findOne(
+          messageChainQuery
+        );
+
+        if (!messageChainResult) {
+          return res
+            .status(404)
+            .send({ status: 404, message: "Message chain not found!" });
+        }
+
+        return res.send({
+          status: 200,
+          data: messageChainResult,
+          message: "Messages fetched successfully!",
+        });
+      } catch (error) {
+        console.error("Failed to fetch messages! :", error);
+        return res.send({ status: 500, message: "Failed to fetch messages!" });
+      }
+    });
+
+    const notificationsCollection = database.collection(
+      "notificationsCollection"
+    );
+
+    const activityHistoriesCollection = database.collection(
+      "activityHistoriesCollection"
+    );
   } catch (error) {
     console.error("MongoDB connection error:", error);
   } finally {
